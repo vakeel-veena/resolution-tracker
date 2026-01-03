@@ -530,40 +530,40 @@
             return 'personal';
         }
 
-        // Coaching feedback functions
+        // Best friend coaching functions
         function getBrutalGoalResponse(title, category, totalGoals) {
-            if (totalGoals > 5) {
-                return `"${title}" is goal #${totalGoals}. Here's some honest feedback: having ${totalGoals} goals might spread you too thin. Consider focusing on 3-4 high-impact goals instead. Quality over quantity leads to better results.`;
-            } else if (totalGoals > 3) {
-                return `Adding "${title}" to your ${category} goals. You've got ${totalGoals} goals total - that's a solid amount. Focus on making consistent progress on each rather than adding more.`;
+            if (totalGoals > 6) {
+                return `Okay, real talk - "${title}" is goal #${totalGoals}. Dude, you're collecting goals like they're trading cards! Pick 3-4 that actually matter to you and ditch the rest. You can't chase everything and catch nothing.`;
+            } else if (totalGoals > 4) {
+                return `"${title}" - alright, that's ${totalGoals} goals now. Listen, I've seen you do this before. You're getting goal-happy. Focus on what you've got before adding more, yeah?`;
+            } else if (totalGoals > 2) {
+                return `"${title}" added! You've got ${totalGoals} goals going - that's actually a sweet spot. Now here's the thing: consistency beats intensity. Show up every day, even if it's just 10 minutes.`;
             } else {
-                return `"${title}" is a solid ${category} goal. Here's what successful people do: they break big goals into weekly actions. What's your first specific action this week?`;
+                return `Love seeing "${title}" as a goal! This is good - ${category} is important. Break this down: what's ONE thing you can do this week? Don't overthink it, just start.`;
             }
         }
 
         function getBrutalProgressResponse(goal, progressIncrease, daysSinceLastUpdate, activity) {
-            let feedback = `Nice work! +${progressIncrease}% on "${goal.title}". `;
-            
-            if (daysSinceLastUpdate > 7) {
-                feedback += `It's been ${daysSinceLastUpdate} days since your last update. Long gaps can kill momentum. Try to check in every 2-3 days, even with small progress.`;
-            } else if (daysSinceLastUpdate > 3) {
-                feedback += `${daysSinceLastUpdate} days between updates is getting long. More frequent action = better results. Can you commit to working on this every other day?`;
+            if (daysSinceLastUpdate > 10) {
+                return `Whoa, hold up! +${progressIncrease}% on "${goal.title}" but it's been ${daysSinceLastUpdate} days?? Come on, we both know you can do better than that. What happened? Let's get back on track.`;
+            } else if (daysSinceLastUpdate > 5) {
+                return `Hey! +${progressIncrease}% is good but ${daysSinceLastUpdate} days between updates? That's how goals die, my friend. I'm not letting you give up on this. What's really going on?`;
+            } else if (daysSinceLastUpdate > 2) {
+                return `Solid ${progressIncrease}% progress on "${goal.title}"! Though ${daysSinceLastUpdate} days is getting a bit long. Keep the momentum - you know what works, just do it more often.`;
             } else if (goal.progress < 30) {
-                feedback += `You're at ${goal.progress}% total progress. Early stages are crucial - this is where you build the habit. Stay consistent and you'll see compound growth.`;
+                return `Yes! +${progressIncrease}% on "${goal.title}"! You're at ${goal.progress}% now. Early days are tough but you're building the foundation. Don't stop when it gets hard - that's when it's working.`;
             } else if (goal.progress < 60) {
-                feedback += `Solid momentum at ${goal.progress}%! You're in the 'messy middle' where progress feels slow but is actually building. This is where champions separate from quitters.`;
+                return `Nice one! +${progressIncrease}% brings you to ${goal.progress}%. You're in that weird middle part where it feels slow but trust me - you're building real momentum here. Keep grinding.`;
             } else if (goal.progress < 90) {
-                feedback += `Excellent progress at ${goal.progress}%! You're in the final stretch. Now is the time to double down, not coast. What will push you to the finish line?`;
+                return `Boom! +${progressIncrease}% and you're at ${goal.progress}%! Dude, you're actually crushing this. Don't ease up now - this is where most people slack off. You're not most people.`;
             } else {
-                feedback += `Outstanding! ${goal.progress}% complete - you're almost there! This is the moment that defines you. Push through and claim your victory.`;
+                return `YESSS! +${progressIncrease}% and you're at ${goal.progress}%! You're SO close I can taste it! Don't you dare stop now. Push through and finish this thing!`;
             }
-            
-            return feedback;
         }
 
         function getBrutalMotivation(resolutions) {
             if (resolutions.length === 0) {
-                return "I see you haven't set any goals yet. Here's the truth: people with written goals are 42% more likely to achieve them. What's one meaningful goal you could start with today?";
+                return "Alright, we need to talk. You've got no goals set up? Come on, you're better than just drifting. Pick ONE thing you actually want and let's make it happen.";
             }
             
             const stagnantGoals = resolutions.filter(r => {
@@ -573,15 +573,20 @@
             
             const lowProgressGoals = resolutions.filter(r => r.progress < 20);
             const highProgressGoals = resolutions.filter(r => r.progress >= 60);
+            const completedGoals = resolutions.filter(r => r.progress >= 100);
             
-            if (stagnantGoals.length > 0) {
-                return `Analysis: ${stagnantGoals.length} of your goals haven't been touched in 5+ days. Recommendation: Either recommit with a specific plan or remove them to focus energy on what truly matters.`;
+            if (completedGoals.length > 0) {
+                return `Yo! You've actually FINISHED ${completedGoals.length} goals! See? You CAN do this. That's proof you're not just a dreamer - you're a doer. What's next?`;
+            } else if (stagnantGoals.length > resolutions.length / 2) {
+                return `Look, I'm gonna be straight with you - ${stagnantGoals.length} of your goals are gathering dust. Either care about them or delete them. Half-hearted doesn't work.`;
+            } else if (lowProgressGoals.length > 0 && highProgressGoals.length > 0) {
+                return `Mixed bag here - you're crushing some goals but others are stuck at the starting line. Focus your energy. What's your #1 priority right now?`;
             } else if (lowProgressGoals.length > 0) {
-                return `Feedback: ${lowProgressGoals.length} goals are under 20% progress. Strategy: Pick your #1 priority goal and commit to 15 minutes daily action. Small consistent steps beat sporadic big efforts.`;
+                return `Real talk: you've got ${lowProgressGoals.length} goals barely started. Stop spreading yourself thin. Pick ONE and commit to 15 minutes daily. That's it.`;
             } else if (highProgressGoals.length > 0) {
-                return `Great momentum! ${highProgressGoals.length} goals are 60%+ complete. You're proving you can finish what you start. What systems are working well that you can apply to other goals?`;
+                return `Dude, you're actually doing great! ${highProgressGoals.length} goals past 60% - that's legit progress. Don't let up now, you're on fire!`;
             } else {
-                return "Your progress is steady across all goals. Here's a challenge: identify your highest-impact goal and double your effort there this week. Sometimes breakthrough requires focused intensity.";
+                return "You're making steady progress but I know you can do better. Pick your favorite goal and double down this week. Show me what you're really capable of.";
             }
         }
 
