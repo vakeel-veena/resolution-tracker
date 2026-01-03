@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resolution Tracker - AI-Powered Goal Achievement</title>
+    <meta name="description" content="Track and achieve your 2026 resolutions with AI-powered insights, progress analytics, and intelligent coaching.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>">
+    
+    <!-- React 18 from CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Lucide React Icons -->
+    <script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Storage polyfill for GitHub Pages -->
+    <script>
+        // Simple storage polyfill using localStorage
+        window.storage = {
+            async get(key) {
+                try {
+                    const value = localStorage.getItem(key);
+                    return value ? { value } : null;
+                } catch (error) {
+                    console.error('Storage get error:', error);
+                    return null;
+                }
+            },
+            async set(key, value) {
+                try {
+                    localStorage.setItem(key, value);
+                    return true;
+                } catch (error) {
+                    console.error('Storage set error:', error);
+                    throw error;
+                }
+            }
+        };
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Work+Sans:wght@300;400;500;600&display=swap');
+        
+        * {
+            font-family: 'Work Sans', sans-serif;
+        }
+        
+        .title-font {
+            font-family: 'Playfair Display', serif;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+        
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(168, 85, 247, 0.4); }
+            50% { box-shadow: 0 0 40px rgba(168, 85, 247, 0.8); }
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        .resolution-card {
+            animation: slideIn 0.4s ease-out;
+        }
+        
+        .progress-bar {
+            transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .input-glow:focus {
+            animation: pulse-glow 2s infinite;
+        }
+        
+        .sparkle {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .animate-slideIn {
+            animation: slideIn 0.4s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        
+        // Import icons from Lucide
+        const { 
+            Sparkles, TrendingUp, Calendar, Target, MessageSquare, Plus, Trash2, 
+            Edit2, Check, X, BarChart3, PieChart, Award, Download, Bell, Clock, 
+            Zap, Star, Upload 
+        } = lucideReact;
+
+        function ResolutionTracker() {
+            // State declarations
+            const [resolutions, setResolutions] = useState([]);
+            const [input, setInput] = useState('');
+            const [isProcessing, setIsProcessing] = useState(false);
+            const [aiResponse, setAiResponse] = useState('');
+            const [editingId, setEditingId] = useState(null);
+            const [editText, setEditText] = useState('');
+            const [isLoading, setIsLoading] = useState(true);
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [showMilestones, setShowMilestones] = useState({});
+            const [isOnline, setIsOnline] = useState(navigator.onLine);
+            const [errors, setErrors] = useState([]);
+            const [pendingUpdates, setPendingUpdates] = useState([]);
+            const chatEndRef = useRef(null);
+
+            // API Key notice for demo
+            useEffect(() => {
+                if (!localStorage.getItem('api-key-notice-shown')) {
+                    alert('⚠️ DEMO MODE: This app requires an Anthropic API key to use AI features. The interface is fully functional for testing, but AI coaching will not work without a valid API key.');
+                    localStorage.setItem('api-key-notice-shown', 'true');
+                }
+            }, []);
+
+            // Load resolutions from storage
+            useEffect(() => {
+                loadResolutions();
+                
+                // Online/offline detection
+                const handleOnline = () => {
+                    setIsOnline(true);
+                    processOfficePendingUpdates();
+                };
+                const handleOffline = () => setIsOnline(false);
+                
+                window.addEventListener('online', handleOnline);
+                window.addEventListener('offline', handleOffline);
+                
+                return () => {
+                    window.removeEventListener('online', handleOnline);
+                    window.removeEventListener('offline', handleOffline);
+                };
+            }, []);
+
+            const addError = (message) => {
+                const error = { id: Date.now(), message, timestamp: new Date() };
+                setErrors(prev => [...prev.slice(-4), error]);
+                setTimeout(() => {
+                    setErrors(prev => prev.filter(e => e.id !== error.id));
+                }, 5000);
+            };
+
+            const processOfficePendingUpdates = async () => {
+                if (pendingUpdates.length === 0) return;
+                
+                for (const update of pendingUpdates) {
+                    try {
+                        await handleNaturalLanguageInput(update.input, true);
+                    } catch (error) {
+                        console.error('Failed to process pending update:', error);
+                    }
+                }
+                setPendingUpdates([]);
+            };
+
+            const loadResolutions = async () => {
+                try {
+                    const result = await window.storage.get('resolutions-data');
+                    if (result?.value) {
+                        setResolutions(JSON.parse(result.value));
+                    }
+                    
+                    // Load pending updates
+                    const pendingResult = await window.storage.get('pending-updates');
+                    if (pendingResult?.value) {
+                        setPendingUpdates(JSON.parse(pendingResult.value));
+                    }
+                } catch (error) {
+                    addError('Failed to load your data. Please refresh and try again.');
+                    console.log('No existing resolutions found');
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const saveResolutions = async (data) => {
+                try {
+                    await window.storage.set('resolutions-data', JSON.stringify(data));
+                } catch (error) {
+                    addError('Failed to save your progress. Please try again.');
+                    console.error('Failed to save:', error);
+                }
+            };
+
+            const savePendingUpdates = async (updates) => {
+                try {
+                    await window.storage.set('pending-updates', JSON.stringify(updates));
+                } catch (error) {
+                    console.error('Failed to save pending updates:', error);
+                }
+            };
+
+            const scrollToBottom = () => {
+                chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            };
+
+            useEffect(() => {
+                scrollToBottom();
+            }, [aiResponse]);
+
+            const handleNaturalLanguageInput = async (customInput = null, skipOfflineCheck = false) => {
+                const userInput = customInput || input.trim();
+                if (!userInput || isProcessing) return;
+
+                if (!customInput) setInput('');
+                setIsProcessing(true);
+                setAiResponse('');
+
+                // Handle offline mode
+                if (!isOnline && !skipOfflineCheck) {
+                    const pendingUpdate = { 
+                        input: userInput, 
+                        timestamp: new Date().toISOString() 
+                    };
+                    const newPending = [...pendingUpdates, pendingUpdate];
+                    setPendingUpdates(newPending);
+                    await savePendingUpdates(newPending);
+                    setAiResponse("You're offline! I've saved your update and will process it when you're back online.");
+                    setIsProcessing(false);
+                    return;
+                }
+
+                try {
+                    // Demo mode - simulate AI responses
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    let parsed;
+                    const lowerInput = userInput.toLowerCase();
+                    
+                    if (lowerInput.includes('want') || lowerInput.includes('goal') || lowerInput.includes('resolution')) {
+                        // Simulate adding a new resolution
+                        parsed = {
+                            action: 'add',
+                            data: {
+                                title: userInput.replace(/i want to |i want |goal:|resolution:/i, '').trim(),
+                                category: lowerInput.includes('health') || lowerInput.includes('fitness') || lowerInput.includes('exercise') ? 'health' :
+                                         lowerInput.includes('work') || lowerInput.includes('career') || lowerInput.includes('job') ? 'career' :
+                                         lowerInput.includes('money') || lowerInput.includes('save') || lowerInput.includes('budget') ? 'finance' :
+                                         lowerInput.includes('learn') || lowerInput.includes('study') || lowerInput.includes('book') ? 'learning' :
+                                         lowerInput.includes('relationship') || lowerInput.includes('family') || lowerInput.includes('friend') ? 'relationships' :
+                                         'personal',
+                                message: "Great goal! I've added it to your resolutions. Remember, every journey begins with a single step. What's your first action going to be?"
+                            }
+                        };
+                    } else if (lowerInput.includes('progress') || lowerInput.includes('did') || lowerInput.includes('completed')) {
+                        // Simulate progress update
+                        parsed = {
+                            action: 'update',
+                            resolutionId: resolutions.length > 0 ? resolutions[0].id : null,
+                            data: {
+                                updateText: userInput,
+                                progressDelta: Math.floor(Math.random() * 20) + 5,
+                                message: "Fantastic progress! Every step forward counts. Keep up the momentum!"
+                            }
+                        };
+                    } else {
+                        // General motivation
+                        parsed = {
+                            action: 'motivate',
+                            data: {
+                                message: "I'm here to support your journey! Try telling me about a new goal you want to achieve, or update me on your progress."
+                            }
+                        };
+                    }
+
+                    let updatedResolutions = [...resolutions];
+
+                    if (parsed.action === 'add' && parsed.data.title) {
+                        const newResolution = {
+                            id: Date.now().toString(),
+                            title: parsed.data.title,
+                            category: parsed.data.category || 'personal',
+                            progress: 0,
+                            createdAt: new Date().toISOString(),
+                            updates: [],
+                            milestones: []
+                        };
+                        updatedResolutions = [...updatedResolutions, newResolution];
+                        setResolutions(updatedResolutions);
+                        await saveResolutions(updatedResolutions);
+                    } else if (parsed.action === 'update' && parsed.resolutionId) {
+                        updatedResolutions = updatedResolutions.map(res => {
+                            if (res.id === parsed.resolutionId) {
+                                const newProgress = Math.max(0, Math.min(100, res.progress + (parsed.data.progressDelta || 0)));
+                                return {
+                                    ...res,
+                                    progress: newProgress,
+                                    updates: [...res.updates, {
+                                        text: parsed.data.updateText || userInput,
+                                        date: new Date().toISOString(),
+                                        progressChange: parsed.data.progressDelta
+                                    }]
+                                };
+                            }
+                            return res;
+                        });
+                        setResolutions(updatedResolutions);
+                        await saveResolutions(updatedResolutions);
+                    }
+
+                    setAiResponse(parsed.data.message || "I'm here to support your journey!");
+                } catch (error) {
+                    console.error('AI Error:', error);
+                    setAiResponse("I had trouble processing that. This is a demo version - try creating a goal by saying 'I want to...' or updating progress!");
+                } finally {
+                    setIsProcessing(false);
+                }
+            };
+
+            const handleDelete = async (id) => {
+                const updated = resolutions.filter(r => r.id !== id);
+                setResolutions(updated);
+                await saveResolutions(updated);
+            };
+
+            const handleEdit = (resolution) => {
+                setEditingId(resolution.id);
+                setEditText(resolution.title);
+            };
+
+            const saveEdit = async () => {
+                const updated = resolutions.map(r => 
+                    r.id === editingId ? { ...r, title: editText } : r
+                );
+                setResolutions(updated);
+                await saveResolutions(updated);
+                setEditingId(null);
+                setEditText('');
+            };
+
+            const getCategoryColor = (category) => {
+                const colors = {
+                    health: '#10b981',
+                    career: '#3b82f6',
+                    personal: '#8b5cf6',
+                    finance: '#f59e0b',
+                    learning: '#ec4899',
+                    relationships: '#ef4444'
+                };
+                return colors[category] || '#6b7280';
+            };
+
+            const getCategoryIcon = (category) => {
+                return category.charAt(0).toUpperCase();
+            };
+
+            const getProgressMessage = (progress) => {
+                if (progress < 20) return "Just getting started";
+                if (progress < 40) return "Building momentum";
+                if (progress < 60) return "Making solid progress";
+                if (progress < 80) return "Getting close!";
+                return "Almost there!";
+            };
+
+            const resetAllData = async () => {
+                if (window.confirm('This will delete all your resolutions and start fresh. Are you sure?')) {
+                    setResolutions([]);
+                    await saveResolutions([]);
+                    setAiResponse('');
+                }
+            };
+
+            // Analytics and other functions (truncated for brevity - full component would include all functions)
+            const getAnalytics = () => {
+                if (resolutions.length === 0) return null;
+                
+                const totalResolutions = resolutions.length;
+                const avgProgress = resolutions.reduce((sum, r) => sum + r.progress, 0) / totalResolutions;
+                const totalUpdates = resolutions.reduce((sum, r) => sum + r.updates.length, 0);
+                const activeResolutions = resolutions.filter(r => r.progress > 0 && r.progress < 100).length;
+                const completedResolutions = resolutions.filter(r => r.progress === 100).length;
+
+                return {
+                    totalResolutions,
+                    avgProgress,
+                    totalUpdates,
+                    activeResolutions,
+                    completedResolutions,
+                    momentum: 'Medium',
+                    recommendations: ['Keep up the great work!'],
+                    recentActivity: totalUpdates,
+                    weeklyActivity: totalUpdates
+                };
+            };
+
+            // Export functions
+            const exportData = (format) => {
+                const data = { resolutions, exportDate: new Date().toISOString() };
+                let content, filename, type;
+                
+                if (format === 'json') {
+                    content = JSON.stringify(data, null, 2);
+                    filename = `resolutions-${new Date().toISOString().split('T')[0]}.json`;
+                    type = 'application/json';
+                } else if (format === 'csv') {
+                    const headers = ['Title', 'Category', 'Progress', 'Created Date'];
+                    const rows = resolutions.map(r => [
+                        `"${r.title.replace(/"/g, '""')}"`,
+                        r.category,
+                        r.progress,
+                        new Date(r.createdAt).toLocaleDateString()
+                    ]);
+                    content = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+                    filename = `resolutions-${new Date().toISOString().split('T')[0]}.csv`;
+                    type = 'text/csv';
+                }
+                
+                const blob = new Blob([content], { type });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            if (isLoading) {
+                return React.createElement('div', {
+                    className: "min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center"
+                }, React.createElement('div', {
+                    className: "text-white text-xl font-light"
+                }, "Loading your journey..."));
+            }
+
+            // Main render
+            return React.createElement('div', {
+                className: "min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white font-sans"
+            }, [
+                // Header
+                React.createElement('div', { 
+                    className: "container mx-auto px-6 py-12", 
+                    key: "main-container" 
+                }, [
+                    // Title section
+                    React.createElement('div', { 
+                        className: "text-center mb-16", 
+                        key: "header" 
+                    }, [
+                        React.createElement('div', { 
+                            className: "inline-block sparkle mb-4", 
+                            key: "sparkle-icon" 
+                        }, React.createElement(Sparkles, { 
+                            className: "w-16 h-16 text-purple-400" 
+                        })),
+                        React.createElement('h1', { 
+                            className: "title-font text-7xl font-black mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent",
+                            key: "main-title"
+                        }, "Resolution Tracker"),
+                        React.createElement('p', { 
+                            className: "text-xl text-purple-200 font-light",
+                            key: "subtitle"
+                        }, "Your AI-powered companion for achieving greatness in 2026")
+                    ]),
+
+                    // Error Messages
+                    errors.length > 0 && React.createElement('div', {
+                        className: "fixed top-4 right-4 space-y-2 z-50",
+                        key: "error-messages"
+                    }, errors.map(error => React.createElement('div', {
+                        key: error.id,
+                        className: "bg-red-500/20 backdrop-blur-lg border border-red-500/50 text-red-200 px-4 py-3 rounded-lg shadow-lg animate-slideIn"
+                    }, React.createElement('div', {
+                        className: "flex items-center gap-2"
+                    }, [
+                        React.createElement(X, { className: "w-4 h-4", key: "error-icon" }),
+                        React.createElement('span', { className: "text-sm", key: "error-text" }, error.message)
+                    ])))),
+
+                    // Offline Indicator
+                    !isOnline && React.createElement('div', {
+                        className: "fixed bottom-4 left-4 bg-orange-500/20 backdrop-blur-lg border border-orange-500/50 text-orange-200 px-4 py-3 rounded-lg shadow-lg z-50",
+                        key: "offline-indicator"
+                    }, React.createElement('div', {
+                        className: "flex items-center gap-2"
+                    }, [
+                        React.createElement(Clock, { className: "w-4 h-4", key: "clock-icon" }),
+                        React.createElement('span', { className: "text-sm", key: "offline-text" }, "Offline mode - updates will sync when reconnected"),
+                        pendingUpdates.length > 0 && React.createElement('span', {
+                            className: "bg-orange-500 text-white text-xs px-2 py-1 rounded-full ml-2",
+                            key: "pending-count"
+                        }, `${pendingUpdates.length} pending`)
+                    ])),
+
+                    // Navigation Tabs
+                    React.createElement('div', { 
+                        className: "max-w-4xl mx-auto mb-8", 
+                        key: "nav-tabs" 
+                    }, React.createElement('div', { 
+                        className: "flex justify-center space-x-1 bg-white/10 backdrop-blur-lg rounded-2xl p-2" 
+                    }, [
+                        { id: 'dashboard', label: 'Dashboard', icon: Target },
+                        { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+                        { id: 'chat', label: 'AI Coach', icon: MessageSquare }
+                    ].map(tab => React.createElement('button', {
+                        key: tab.id,
+                        onClick: () => setActiveTab(tab.id),
+                        className: `flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
+                            activeTab === tab.id 
+                                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg' 
+                                : 'text-purple-200 hover:text-white hover:bg-white/10'
+                        }`
+                    }, [
+                        React.createElement(tab.icon, { className: "w-5 h-5", key: "tab-icon" }),
+                        tab.label
+                    ])))),
+
+                    // Chat Interface (visible on all tabs for demo)
+                    activeTab === 'chat' && React.createElement('div', { 
+                        className: "max-w-4xl mx-auto mb-12", 
+                        key: "chat-interface" 
+                    }, [
+                        React.createElement('div', { 
+                            className: "bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20",
+                            key: "chat-input"
+                        }, React.createElement('div', { 
+                            className: "flex items-start gap-4" 
+                        }, [
+                            React.createElement(MessageSquare, { 
+                                className: "w-6 h-6 mt-1 text-purple-300 flex-shrink-0",
+                                key: "chat-icon"
+                            }),
+                            React.createElement('div', { 
+                                className: "flex-grow",
+                                key: "chat-content"
+                            }, [
+                                React.createElement('textarea', {
+                                    key: "chat-textarea",
+                                    value: input,
+                                    onChange: (e) => setInput(e.target.value),
+                                    onKeyDown: (e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleNaturalLanguageInput();
+                                        }
+                                    },
+                                    placeholder: "Talk to your AI coach... Try: 'I want to run a marathon this year' or 'I ran 5k today!' or 'How am I doing?'",
+                                    className: "w-full bg-transparent text-white placeholder-purple-300 outline-none resize-none font-light text-lg",
+                                    rows: 3,
+                                    disabled: isProcessing
+                                }),
+                                React.createElement('div', { 
+                                    className: "flex justify-between items-center mt-4",
+                                    key: "chat-controls"
+                                }, [
+                                    React.createElement('span', { 
+                                        className: "text-sm text-purple-300",
+                                        key: "chat-status"
+                                    }, isProcessing ? 'AI is thinking...' : 'Press Enter to send'),
+                                    React.createElement('button', {
+                                        key: "chat-send",
+                                        onClick: handleNaturalLanguageInput,
+                                        disabled: isProcessing || !input.trim(),
+                                        className: "bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-2 rounded-full font-medium hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                                    }, isProcessing ? 'Processing...' : 'Send')
+                                ])
+                            ])
+                        ])),
+                        aiResponse && React.createElement('div', {
+                            className: "mt-6 bg-gradient-to-r from-purple-500/20 to-pink-500/20 backdrop-blur-lg rounded-2xl p-6 border border-purple-400/30",
+                            key: "ai-response"
+                        }, React.createElement('div', {
+                            className: "flex gap-3"
+                        }, [
+                            React.createElement(Sparkles, { className: "w-5 h-5 text-purple-300 flex-shrink-0 mt-1", key: "ai-icon" }),
+                            React.createElement('p', { className: "text-white font-light leading-relaxed", key: "ai-text" }, aiResponse)
+                        ])),
+                        React.createElement('div', { ref: chatEndRef, key: "chat-end" })
+                    ]),
+
+                    // Dashboard Content
+                    activeTab === 'dashboard' && React.createElement('div', { 
+                        key: "dashboard-content" 
+                    }, [
+                        // Quick AI Input for Dashboard
+                        React.createElement('div', { 
+                            className: "max-w-4xl mx-auto mb-12", 
+                            key: "dashboard-input"
+                        }, React.createElement('div', { 
+                            className: "bg-white/10 backdrop-blur-lg rounded-3xl p-6 border border-white/20" 
+                        }, React.createElement('div', { 
+                            className: "flex items-center gap-4" 
+                        }, [
+                            React.createElement('input', {
+                                key: "quick-input",
+                                type: "text",
+                                value: input,
+                                onChange: (e) => setInput(e.target.value),
+                                onKeyDown: (e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleNaturalLanguageInput();
+                                    }
+                                },
+                                placeholder: "Quick update: 'I want to learn Spanish' or 'Ran 3 miles today!'",
+                                className: "flex-grow bg-transparent text-white placeholder-purple-300 outline-none font-light text-lg",
+                                disabled: isProcessing
+                            }),
+                            React.createElement('button', {
+                                key: "quick-send",
+                                onClick: handleNaturalLanguageInput,
+                                disabled: isProcessing || !input.trim(),
+                                className: "bg-gradient-to-r from-purple-500 to-pink-500 px-4 py-2 rounded-lg font-medium hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 transition-all"
+                            }, isProcessing ? '...' : 'Add')
+                        ]))),
+
+                        // Resolutions Grid or Empty State
+                        resolutions.length > 0 ? React.createElement('div', { 
+                            className: "max-w-6xl mx-auto",
+                            key: "resolutions-grid"
+                        }, [
+                            React.createElement('div', { 
+                                className: "flex justify-between items-center mb-8",
+                                key: "grid-header"
+                            }, [
+                                React.createElement('h2', { 
+                                    className: "title-font text-4xl font-bold",
+                                    key: "grid-title"
+                                }, "Your Resolutions"),
+                                React.createElement('button', {
+                                    key: "reset-button",
+                                    onClick: resetAllData,
+                                    className: "text-sm text-purple-300 hover:text-purple-100 transition-colors"
+                                }, "Reset All")
+                            ]),
+                            React.createElement('div', { 
+                                className: "grid grid-cols-1 md:grid-cols-2 gap-6",
+                                key: "resolutions-list"
+                            }, resolutions.map((resolution, index) => React.createElement('div', {
+                                key: resolution.id,
+                                className: "resolution-card bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10 hover:border-purple-400/50 transition-all duration-300",
+                                style: { animationDelay: `${index * 0.1}s` }
+                            }, [
+                                React.createElement('div', { 
+                                    className: "flex justify-between items-start mb-4",
+                                    key: "resolution-header"
+                                }, [
+                                    React.createElement('div', { 
+                                        className: "flex items-start gap-3 flex-grow",
+                                        key: "resolution-info"
+                                    }, [
+                                        React.createElement('div', {
+                                            key: "category-badge",
+                                            className: "w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm",
+                                            style: { backgroundColor: getCategoryColor(resolution.category) + '40', color: getCategoryColor(resolution.category) }
+                                        }, getCategoryIcon(resolution.category)),
+                                        React.createElement('div', { 
+                                            className: "flex-grow",
+                                            key: "title-section"
+                                        }, [
+                                            editingId === resolution.id ? React.createElement('div', { 
+                                                className: "flex gap-2",
+                                                key: "edit-form"
+                                            }, [
+                                                React.createElement('input', {
+                                                    key: "edit-input",
+                                                    type: "text",
+                                                    value: editText,
+                                                    onChange: (e) => setEditText(e.target.value),
+                                                    className: "flex-grow bg-white/10 px-3 py-1 rounded-lg outline-none text-white",
+                                                    autoFocus: true
+                                                }),
+                                                React.createElement('button', { 
+                                                    key: "save-edit",
+                                                    onClick: saveEdit, 
+                                                    className: "text-green-400 hover:text-green-300" 
+                                                }, React.createElement(Check, { className: "w-5 h-5" })),
+                                                React.createElement('button', { 
+                                                    key: "cancel-edit",
+                                                    onClick: () => setEditingId(null), 
+                                                    className: "text-red-400 hover:text-red-300" 
+                                                }, React.createElement(X, { className: "w-5 h-5" }))
+                                            ]) : [
+                                                React.createElement('h3', { 
+                                                    className: "text-xl font-semibold text-white mb-1",
+                                                    key: "resolution-title"
+                                                }, resolution.title),
+                                                React.createElement('p', { 
+                                                    className: "text-sm text-purple-300 capitalize",
+                                                    key: "resolution-category"
+                                                }, resolution.category)
+                                            ]
+                                        ])
+                                    ]),
+                                    React.createElement('div', { 
+                                        className: "flex gap-2",
+                                        key: "action-buttons"
+                                    }, [
+                                        React.createElement('button', {
+                                            key: "edit-button",
+                                            onClick: () => handleEdit(resolution),
+                                            className: "text-purple-300 hover:text-purple-100 transition-colors"
+                                        }, React.createElement(Edit2, { className: "w-4 h-4" })),
+                                        React.createElement('button', {
+                                            key: "delete-button",
+                                            onClick: () => handleDelete(resolution.id),
+                                            className: "text-red-400 hover:text-red-300 transition-colors"
+                                        }, React.createElement(Trash2, { className: "w-4 h-4" }))
+                                    ])
+                                ]),
+                                
+                                // Progress Bar
+                                React.createElement('div', { 
+                                    className: "mb-4",
+                                    key: "progress-section"
+                                }, [
+                                    React.createElement('div', { 
+                                        className: "flex justify-between items-center mb-2",
+                                        key: "progress-header"
+                                    }, [
+                                        React.createElement('span', { 
+                                            className: "text-sm text-purple-200",
+                                            key: "progress-message"
+                                        }, getProgressMessage(resolution.progress)),
+                                        React.createElement('span', { 
+                                            className: "text-lg font-bold",
+                                            style: { color: getCategoryColor(resolution.category) },
+                                            key: "progress-percentage"
+                                        }, `${resolution.progress}%`)
+                                    ]),
+                                    React.createElement('div', { 
+                                        className: "h-3 bg-white/10 rounded-full overflow-hidden",
+                                        key: "progress-bar-container"
+                                    }, React.createElement('div', {
+                                        key: "progress-bar",
+                                        className: "progress-bar h-full rounded-full",
+                                        style: {
+                                            width: `${resolution.progress}%`,
+                                            background: `linear-gradient(90deg, ${getCategoryColor(resolution.category)}, ${getCategoryColor(resolution.category)}dd)`
+                                        }
+                                    }))
+                                ]),
+
+                                // Recent Updates
+                                resolution.updates && resolution.updates.length > 0 && React.createElement('div', { 
+                                    className: "mt-4 pt-4 border-t border-white/10",
+                                    key: "recent-updates"
+                                }, [
+                                    React.createElement('p', { 
+                                        className: "text-xs text-purple-300 mb-2",
+                                        key: "update-label"
+                                    }, "Latest Update:"),
+                                    React.createElement('p', { 
+                                        className: "text-sm text-white/80",
+                                        key: "update-text"
+                                    }, resolution.updates[resolution.updates.length - 1].text),
+                                    React.createElement('p', { 
+                                        className: "text-xs text-purple-300 mt-1",
+                                        key: "update-date"
+                                    }, new Date(resolution.updates[resolution.updates.length - 1].date).toLocaleDateString())
+                                ])
+                            ])))
+                        ]) : React.createElement('div', { 
+                            className: "max-w-2xl mx-auto text-center py-16",
+                            key: "empty-state"
+                        }, [
+                            React.createElement(Target, { 
+                                className: "w-20 h-20 mx-auto mb-6 text-purple-400 opacity-50",
+                                key: "empty-icon"
+                            }),
+                            React.createElement('h3', { 
+                                className: "title-font text-3xl font-bold mb-4",
+                                key: "empty-title"
+                            }, "Ready to Start Your Journey?"),
+                            React.createElement('p', { 
+                                className: "text-lg text-purple-200 font-light mb-8",
+                                key: "empty-subtitle"
+                            }, "Tell your AI coach about a goal you want to achieve this year. Be specific or casual - the AI understands both!"),
+                            React.createElement('div', { 
+                                className: "bg-white/5 backdrop-blur-lg rounded-2xl p-6 text-left",
+                                key: "examples-box"
+                            }, [
+                                React.createElement('p', { 
+                                    className: "text-sm text-purple-300 mb-3",
+                                    key: "examples-label"
+                                }, "Try examples like:"),
+                                React.createElement('ul', { 
+                                    className: "space-y-2 text-white/80",
+                                    key: "examples-list"
+                                }, [
+                                    '"I want to read 24 books this year"',
+                                    '"Learn to play guitar"', 
+                                    '"Save $5000 for a vacation"',
+                                    '"Run a 5K without stopping"'
+                                ].map((example, i) => React.createElement('li', { 
+                                    className: "flex items-start gap-2",
+                                    key: `example-${i}`
+                                }, [
+                                    React.createElement('span', { 
+                                        className: "text-purple-400",
+                                        key: "bullet"
+                                    }, "•"),
+                                    React.createElement('span', { 
+                                        key: "text" 
+                                    }, example)
+                                ])))
+                            ])
+                        ])
+                    ]),
+
+                    // Analytics Tab
+                    activeTab === 'analytics' && React.createElement('div', { 
+                        className: "max-w-6xl mx-auto mb-12",
+                        key: "analytics-content"
+                    }, getAnalytics() ? React.createElement('div', {
+                        className: "space-y-8",
+                        key: "analytics-data"
+                    }, [
+                        // Export Controls
+                        React.createElement('div', { 
+                            className: "flex justify-between items-center",
+                            key: "analytics-header"
+                        }, [
+                            React.createElement('h2', { 
+                                className: "title-font text-4xl font-bold",
+                                key: "analytics-title"
+                            }, "Analytics & Insights"),
+                            React.createElement('div', { 
+                                className: "flex gap-2",
+                                key: "export-buttons"
+                            }, [
+                                React.createElement('button', {
+                                    key: "json-export",
+                                    onClick: () => exportData('json'),
+                                    className: "flex items-center gap-2 bg-blue-500/20 text-blue-300 px-4 py-2 rounded-lg hover:bg-blue-500/30 transition-colors"
+                                }, [
+                                    React.createElement(Download, { className: "w-4 h-4", key: "json-icon" }),
+                                    "JSON"
+                                ]),
+                                React.createElement('button', {
+                                    key: "csv-export",
+                                    onClick: () => exportData('csv'),
+                                    className: "flex items-center gap-2 bg-green-500/20 text-green-300 px-4 py-2 rounded-lg hover:bg-green-500/30 transition-colors"
+                                }, [
+                                    React.createElement(Download, { className: "w-4 h-4", key: "csv-icon" }),
+                                    "CSV"
+                                ])
+                            ])
+                        ]),
+
+                        // Analytics Grid
+                        (() => {
+                            const analytics = getAnalytics();
+                            return React.createElement('div', { 
+                                className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6",
+                                key: "analytics-grid"
+                            }, [
+                                React.createElement('div', { 
+                                    className: "bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10",
+                                    key: "total-stat"
+                                }, [
+                                    React.createElement('div', { 
+                                        className: "flex items-center gap-3 mb-3",
+                                        key: "total-header"
+                                    }, [
+                                        React.createElement(Target, { className: "w-8 h-8 text-purple-400", key: "total-icon" }),
+                                        React.createElement('h3', { className: "text-lg font-semibold", key: "total-label" }, "Total Goals")
+                                    ]),
+                                    React.createElement('p', { 
+                                        className: "text-3xl font-bold text-purple-300",
+                                        key: "total-value"
+                                    }, analytics.totalResolutions)
+                                ]),
+                                React.createElement('div', { 
+                                    className: "bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10",
+                                    key: "progress-stat"
+                                }, [
+                                    React.createElement('div', { 
+                                        className: "flex items-center gap-3 mb-3",
+                                        key: "progress-header"
+                                    }, [
+                                        React.createElement(TrendingUp, { className: "w-8 h-8 text-green-400", key: "progress-icon" }),
+                                        React.createElement('h3', { className: "text-lg font-semibold", key: "progress-label" }, "Avg Progress")
+                                    ]),
+                                    React.createElement('p', { 
+                                        className: "text-3xl font-bold text-green-300",
+                                        key: "progress-value"
+                                    }, `${Math.round(analytics.avgProgress)}%`)
+                                ]),
+                                React.createElement('div', { 
+                                    className: "bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10",
+                                    key: "active-stat"
+                                }, [
+                                    React.createElement('div', { 
+                                        className: "flex items-center gap-3 mb-3",
+                                        key: "active-header"
+                                    }, [
+                                        React.createElement(Zap, { className: "w-8 h-8 text-yellow-400", key: "active-icon" }),
+                                        React.createElement('h3', { className: "text-lg font-semibold", key: "active-label" }, "Active Goals")
+                                    ]),
+                                    React.createElement('p', { 
+                                        className: "text-3xl font-bold text-yellow-300",
+                                        key: "active-value"
+                                    }, analytics.activeResolutions)
+                                ]),
+                                React.createElement('div', { 
+                                    className: "bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10",
+                                    key: "completed-stat"
+                                }, [
+                                    React.createElement('div', { 
+                                        className: "flex items-center gap-3 mb-3",
+                                        key: "completed-header"
+                                    }, [
+                                        React.createElement(Award, { className: "w-8 h-8 text-yellow-400", key: "completed-icon" }),
+                                        React.createElement('h3', { className: "text-lg font-semibold", key: "completed-label" }, "Completed")
+                                    ]),
+                                    React.createElement('p', { 
+                                        className: "text-3xl font-bold text-yellow-400",
+                                        key: "completed-value"
+                                    }, analytics.completedResolutions)
+                                ])
+                            ]);
+                        })()
+                    ]) : React.createElement('div', { 
+                        className: "text-center py-16",
+                        key: "no-analytics"
+                    }, [
+                        React.createElement(BarChart3, { 
+                            className: "w-20 h-20 mx-auto mb-6 text-purple-400 opacity-50",
+                            key: "no-data-icon"
+                        }),
+                        React.createElement('h3', { 
+                            className: "title-font text-3xl font-bold mb-4",
+                            key: "no-data-title"
+                        }, "No Data Yet"),
+                        React.createElement('p', { 
+                            className: "text-lg text-purple-200",
+                            key: "no-data-message"
+                        }, "Create some resolutions to see your analytics and insights here.")
+                    ]))
+                ])
+            ]);
+        }
+        
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(ResolutionTracker));
+    </script>
+    
+    <!-- Babel for JSX transformation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</body>
+</html>
