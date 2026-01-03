@@ -395,7 +395,7 @@
         
         brutalModeToggle.addEventListener('change', (e) => {
             brutalMode = e.target.checked;
-            modeLabel.textContent = brutalMode ? '🔥 Brutal' : '😊 Supportive';
+            modeLabel.textContent = brutalMode ? '🎯 Coach' : '😊 Supportive';
             storage.set('brutal-mode', brutalMode.toString());
         });
 
@@ -412,7 +412,7 @@
                 if (brutalSetting?.value) {
                     brutalMode = brutalSetting.value === 'true';
                     brutalModeToggle.checked = brutalMode;
-                    modeLabel.textContent = brutalMode ? '🔥 Brutal' : '😊 Supportive';
+                    modeLabel.textContent = brutalMode ? '🎯 Coach' : '😊 Supportive';
                 }
                 
                 updateUI();
@@ -493,7 +493,7 @@
                         }
                     } else {
                         if (brutalMode) {
-                            response = "Really? You're logging progress when you don't even have any goals set? That's like celebrating running when you haven't even tied your shoes. Set some actual goals first.";
+                            response = "I see you're ready to track progress, but you need goals first. Here's my advice: start with ONE specific, measurable goal. What's the most important thing you want to achieve this month?";
                         } else {
                             response = "That sounds like great progress! Create your first goal so I can start tracking your achievements.";
                         }
@@ -530,50 +530,58 @@
             return 'personal';
         }
 
-        // Brutal feedback functions
+        // Coaching feedback functions
         function getBrutalGoalResponse(title, category, totalGoals) {
-            const brutalGoalResponses = [
-                `Another goal? You've got ${totalGoals} goals now. Maybe focus on actually COMPLETING one instead of collecting them like Pokemon cards.`,
-                `"${title}" - let me guess, you'll work on it for 2 weeks then forget about it? Prove me wrong.`,
-                `Oh great, another ${category} goal. Your graveyard of abandoned goals is getting crowded. This one better be different.`,
-                `"${title}" added to your list of wishful thinking. When are you actually going to DO something about it?`,
-                `You know what's harder than setting goals? Actually achieving them. "${title}" is now your latest excuse to procrastinate on the others.`,
-            ];
-            return brutalGoalResponses[Math.floor(Math.random() * brutalGoalResponses.length)];
+            if (totalGoals > 5) {
+                return `"${title}" is goal #${totalGoals}. Here's some honest feedback: having ${totalGoals} goals might spread you too thin. Consider focusing on 3-4 high-impact goals instead. Quality over quantity leads to better results.`;
+            } else if (totalGoals > 3) {
+                return `Adding "${title}" to your ${category} goals. You've got ${totalGoals} goals total - that's a solid amount. Focus on making consistent progress on each rather than adding more.`;
+            } else {
+                return `"${title}" is a solid ${category} goal. Here's what successful people do: they break big goals into weekly actions. What's your first specific action this week?`;
+            }
         }
 
         function getBrutalProgressResponse(goal, progressIncrease, daysSinceLastUpdate, activity) {
-            if (daysSinceLastUpdate > 3) {
-                return `Finally! It's been ${daysSinceLastUpdate} days since you last worked on "${goal.title}". ${progressIncrease}% progress after that long? That's embarrassingly slow. Pick up the pace.`;
+            let feedback = `Nice work! +${progressIncrease}% on "${goal.title}". `;
+            
+            if (daysSinceLastUpdate > 7) {
+                feedback += `It's been ${daysSinceLastUpdate} days since your last update. Long gaps can kill momentum. Try to check in every 2-3 days, even with small progress.`;
+            } else if (daysSinceLastUpdate > 3) {
+                feedback += `${daysSinceLastUpdate} days between updates is getting long. More frequent action = better results. Can you commit to working on this every other day?`;
             } else if (goal.progress < 30) {
-                return `${progressIncrease}% progress on "${goal.title}"? You're still crawling when you should be sprinting. At this rate, you'll finish sometime next decade.`;
+                feedback += `You're at ${goal.progress}% total progress. Early stages are crucial - this is where you build the habit. Stay consistent and you'll see compound growth.`;
             } else if (goal.progress < 60) {
-                return `Okay, ${progressIncrease}% more on "${goal.title}". You're halfway there, but "halfway" is where most people quit. Don't be most people.`;
+                feedback += `Solid momentum at ${goal.progress}%! You're in the 'messy middle' where progress feels slow but is actually building. This is where champions separate from quitters.`;
             } else if (goal.progress < 90) {
-                return `${progressIncrease}% closer to "${goal.title}". You're in the danger zone where people get comfortable and slack off. Don't you dare stop now.`;
+                feedback += `Excellent progress at ${goal.progress}%! You're in the final stretch. Now is the time to double down, not coast. What will push you to the finish line?`;
             } else {
-                return `${progressIncrease}% on "${goal.title}"? You're so close you can taste it. If you quit now, you're the definition of a quitter. FINISH IT.`;
+                feedback += `Outstanding! ${goal.progress}% complete - you're almost there! This is the moment that defines you. Push through and claim your victory.`;
             }
+            
+            return feedback;
         }
 
         function getBrutalMotivation(resolutions) {
             if (resolutions.length === 0) {
-                return "No goals? No progress? No surprise. You can't hit targets you don't set. Stop wasting time and commit to something.";
+                return "I see you haven't set any goals yet. Here's the truth: people with written goals are 42% more likely to achieve them. What's one meaningful goal you could start with today?";
             }
             
             const stagnantGoals = resolutions.filter(r => {
                 const daysSinceUpdate = Math.floor((new Date() - new Date(r.lastUpdate)) / (1000 * 60 * 60 * 24));
-                return daysSinceUpdate > 2;
+                return daysSinceUpdate > 5;
             });
             
             const lowProgressGoals = resolutions.filter(r => r.progress < 20);
+            const highProgressGoals = resolutions.filter(r => r.progress >= 60);
             
             if (stagnantGoals.length > 0) {
-                return `You have ${stagnantGoals.length} goals collecting dust. What's the point of setting goals if you're going to ignore them? Either work on them or delete them.`;
+                return `Analysis: ${stagnantGoals.length} of your goals haven't been touched in 5+ days. Recommendation: Either recommit with a specific plan or remove them to focus energy on what truly matters.`;
             } else if (lowProgressGoals.length > 0) {
-                return `${lowProgressGoals.length} of your goals are barely started. Stop making excuses and start making progress. Results don't care about your intentions.`;
+                return `Feedback: ${lowProgressGoals.length} goals are under 20% progress. Strategy: Pick your #1 priority goal and commit to 15 minutes daily action. Small consistent steps beat sporadic big efforts.`;
+            } else if (highProgressGoals.length > 0) {
+                return `Great momentum! ${highProgressGoals.length} goals are 60%+ complete. You're proving you can finish what you start. What systems are working well that you can apply to other goals?`;
             } else {
-                return "You're making progress, but are you making ENOUGH progress? Good isn't good enough if you're capable of great. Push harder.";
+                return "Your progress is steady across all goals. Here's a challenge: identify your highest-impact goal and double your effort there this week. Sometimes breakthrough requires focused intensity.";
             }
         }
 
@@ -583,8 +591,8 @@
             
             // Change styling based on mode
             if (brutalMode) {
-                aiResponse.style.background = 'linear-gradient(to right, rgba(239, 68, 68, 0.2), rgba(251, 146, 60, 0.2))';
-                aiResponse.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                aiResponse.style.background = 'linear-gradient(to right, rgba(59, 130, 246, 0.2), rgba(16, 185, 129, 0.2))';
+                aiResponse.style.borderColor = 'rgba(59, 130, 246, 0.3)';
             } else {
                 aiResponse.style.background = 'linear-gradient(to right, rgba(168, 85, 247, 0.2), rgba(236, 72, 153, 0.2))';
                 aiResponse.style.borderColor = 'rgba(168, 85, 247, 0.3)';
