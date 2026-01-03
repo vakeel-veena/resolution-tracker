@@ -270,6 +270,16 @@
 
         <!-- Input Section -->
         <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="margin: 0;">AI Coach</h3>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 0.875rem; color: #c4b5fd;">Coaching Style:</span>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="brutalModeToggle" style="accent-color: #a855f7;">
+                        <span style="font-size: 0.875rem; font-weight: 600;" id="modeLabel">😊 Supportive</span>
+                    </label>
+                </div>
+            </div>
             <div class="input-section">
                 <input 
                     type="text" 
@@ -339,6 +349,7 @@
         // Global state
         let resolutions = [];
         let isProcessing = false;
+        let brutalMode = false;
 
         // DOM elements
         const goalInput = document.getElementById('goalInput');
@@ -347,6 +358,8 @@
         const aiResponseText = document.getElementById('aiResponseText');
         const goalsList = document.getElementById('goalsList');
         const emptyState = document.getElementById('emptyState');
+        const brutalModeToggle = document.getElementById('brutalModeToggle');
+        const modeLabel = document.getElementById('modeLabel');
 
         // Category colors
         const categoryColors = {
@@ -379,6 +392,12 @@
                 handleInput();
             }
         });
+        
+        brutalModeToggle.addEventListener('change', (e) => {
+            brutalMode = e.target.checked;
+            modeLabel.textContent = brutalMode ? '🔥 Brutal' : '😊 Supportive';
+            storage.set('brutal-mode', brutalMode.toString());
+        });
 
         // Load resolutions from storage
         function loadResolutions() {
@@ -387,6 +406,15 @@
                 if (result?.value) {
                     resolutions = JSON.parse(result.value);
                 }
+                
+                // Load brutal mode setting
+                const brutalSetting = storage.get('brutal-mode');
+                if (brutalSetting?.value) {
+                    brutalMode = brutalSetting.value === 'true';
+                    brutalModeToggle.checked = brutalMode;
+                    modeLabel.textContent = brutalMode ? '🔥 Brutal' : '😊 Supportive';
+                }
+                
                 updateUI();
             } catch (error) {
                 console.error('Failed to load resolutions:', error);
@@ -430,20 +458,27 @@
                         category: category,
                         progress: 0,
                         createdAt: new Date().toISOString(),
-                        updates: []
+                        updates: [],
+                        lastUpdate: new Date().toISOString()
                     };
                     
                     resolutions.push(newGoal);
                     saveResolutions();
                     
-                    response = `Great goal! I've added "${title}" to your ${category} resolutions. Remember, every journey begins with a single step. What's your first action going to be?`;
+                    if (brutalMode) {
+                        response = getBrutalGoalResponse(title, category, resolutions.length);
+                    } else {
+                        response = `Great goal! I've added "${title}" to your ${category} resolutions. Remember, every journey begins with a single step. What's your first action going to be?`;
+                    }
                     
                 } else if (lowerInput.includes('progress') || lowerInput.includes('did') || lowerInput.includes('completed') || lowerInput.includes('ran') || lowerInput.includes('studied') || lowerInput.includes('read')) {
                     // Update progress on most recent goal
                     if (resolutions.length > 0) {
                         const lastGoal = resolutions[resolutions.length - 1];
+                        const daysSinceLastUpdate = Math.floor((new Date() - new Date(lastGoal.lastUpdate)) / (1000 * 60 * 60 * 24));
                         const progressIncrease = Math.floor(Math.random() * 15) + 5;
                         lastGoal.progress = Math.min(100, lastGoal.progress + progressIncrease);
+                        lastGoal.lastUpdate = new Date().toISOString();
                         lastGoal.updates.push({
                             text: input,
                             date: new Date().toISOString(),
@@ -451,13 +486,25 @@
                         });
                         saveResolutions();
                         
-                        response = `Fantastic progress on "${lastGoal.title}"! I've updated your progress by ${progressIncrease}%. Every step forward counts. Keep up the momentum!`;
+                        if (brutalMode) {
+                            response = getBrutalProgressResponse(lastGoal, progressIncrease, daysSinceLastUpdate, input);
+                        } else {
+                            response = `Fantastic progress on "${lastGoal.title}"! I've updated your progress by ${progressIncrease}%. Every step forward counts. Keep up the momentum!`;
+                        }
                     } else {
-                        response = "That sounds like great progress! Create your first goal so I can start tracking your achievements.";
+                        if (brutalMode) {
+                            response = "Really? You're logging progress when you don't even have any goals set? That's like celebrating running when you haven't even tied your shoes. Set some actual goals first.";
+                        } else {
+                            response = "That sounds like great progress! Create your first goal so I can start tracking your achievements.";
+                        }
                     }
                 } else {
                     // General motivation
-                    response = "I'm here to support your journey! Try telling me about a new goal you want to achieve with 'I want to...', or update me on your progress!";
+                    if (brutalMode) {
+                        response = getBrutalMotivation(resolutions);
+                    } else {
+                        response = "I'm here to support your journey! Try telling me about a new goal you want to achieve with 'I want to...', or update me on your progress!";
+                    }
                 }
 
                 showAIResponse(response);
@@ -483,13 +530,70 @@
             return 'personal';
         }
 
+        // Brutal feedback functions
+        function getBrutalGoalResponse(title, category, totalGoals) {
+            const brutalGoalResponses = [
+                `Another goal? You've got ${totalGoals} goals now. Maybe focus on actually COMPLETING one instead of collecting them like Pokemon cards.`,
+                `"${title}" - let me guess, you'll work on it for 2 weeks then forget about it? Prove me wrong.`,
+                `Oh great, another ${category} goal. Your graveyard of abandoned goals is getting crowded. This one better be different.`,
+                `"${title}" added to your list of wishful thinking. When are you actually going to DO something about it?`,
+                `You know what's harder than setting goals? Actually achieving them. "${title}" is now your latest excuse to procrastinate on the others.`,
+            ];
+            return brutalGoalResponses[Math.floor(Math.random() * brutalGoalResponses.length)];
+        }
+
+        function getBrutalProgressResponse(goal, progressIncrease, daysSinceLastUpdate, activity) {
+            if (daysSinceLastUpdate > 3) {
+                return `Finally! It's been ${daysSinceLastUpdate} days since you last worked on "${goal.title}". ${progressIncrease}% progress after that long? That's embarrassingly slow. Pick up the pace.`;
+            } else if (goal.progress < 30) {
+                return `${progressIncrease}% progress on "${goal.title}"? You're still crawling when you should be sprinting. At this rate, you'll finish sometime next decade.`;
+            } else if (goal.progress < 60) {
+                return `Okay, ${progressIncrease}% more on "${goal.title}". You're halfway there, but "halfway" is where most people quit. Don't be most people.`;
+            } else if (goal.progress < 90) {
+                return `${progressIncrease}% closer to "${goal.title}". You're in the danger zone where people get comfortable and slack off. Don't you dare stop now.`;
+            } else {
+                return `${progressIncrease}% on "${goal.title}"? You're so close you can taste it. If you quit now, you're the definition of a quitter. FINISH IT.`;
+            }
+        }
+
+        function getBrutalMotivation(resolutions) {
+            if (resolutions.length === 0) {
+                return "No goals? No progress? No surprise. You can't hit targets you don't set. Stop wasting time and commit to something.";
+            }
+            
+            const stagnantGoals = resolutions.filter(r => {
+                const daysSinceUpdate = Math.floor((new Date() - new Date(r.lastUpdate)) / (1000 * 60 * 60 * 24));
+                return daysSinceUpdate > 2;
+            });
+            
+            const lowProgressGoals = resolutions.filter(r => r.progress < 20);
+            
+            if (stagnantGoals.length > 0) {
+                return `You have ${stagnantGoals.length} goals collecting dust. What's the point of setting goals if you're going to ignore them? Either work on them or delete them.`;
+            } else if (lowProgressGoals.length > 0) {
+                return `${lowProgressGoals.length} of your goals are barely started. Stop making excuses and start making progress. Results don't care about your intentions.`;
+            } else {
+                return "You're making progress, but are you making ENOUGH progress? Good isn't good enough if you're capable of great. Push harder.";
+            }
+        }
+
         // Show AI response
         function showAIResponse(message) {
             aiResponseText.textContent = message;
+            
+            // Change styling based on mode
+            if (brutalMode) {
+                aiResponse.style.background = 'linear-gradient(to right, rgba(239, 68, 68, 0.2), rgba(251, 146, 60, 0.2))';
+                aiResponse.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+            } else {
+                aiResponse.style.background = 'linear-gradient(to right, rgba(168, 85, 247, 0.2), rgba(236, 72, 153, 0.2))';
+                aiResponse.style.borderColor = 'rgba(168, 85, 247, 0.3)';
+            }
+            
             aiResponse.style.display = 'block';
             setTimeout(() => {
                 aiResponse.style.display = 'none';
-            }, 5000);
+            }, 7000); // Show longer for brutal feedback to sink in
         }
 
         // Update UI
